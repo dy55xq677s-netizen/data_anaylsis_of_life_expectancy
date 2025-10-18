@@ -1,0 +1,191 @@
+# This is a sample Python script.
+
+import pandas as pd
+import matplotlib.pyplot as plt
+import numpy as np
+
+# --- Configuration ---
+# Columns assumed to exist after the previous steps of loading and cleaning:
+COUNTRY_COL = 'country'
+YEAR_COL = 'year'
+LIFE_EXPECTANCY_COL = 'life_expectancy'
+TOP_N_COUNTRIES = 5
+
+
+def create_mock_data():
+    """
+    Creates a mock DataFrame simulating the structure of the Life Expectancy dataset,
+    ensuring some countries have a large change for demonstration purposes.
+    The placeholder country names are replaced with real names for better context.
+    """
+    print("Generating mock data using named countries...")
+
+    # 20 countries, 20 years (2000-2019)
+    all_countries = [
+        'Rwanda', 'China', 'South Africa', 'Ukraine', 'India', 'Brazil', 'Vietnam',
+        'Japan', 'Germany', 'France', 'Mexico', 'Nigeria', 'Egypt', 'Thailand',
+        'Kenya', 'Peru', 'Canada', 'Australia', 'Indonesia', 'UK'
+    ]
+    years = np.arange(2000, 2020)
+
+    data = []
+
+    # Define countries for specific mock trends
+    high_increase = ['Rwanda', 'China']
+    high_decrease = ['South Africa', 'Ukraine']
+    moderate_increase = ['India', 'Brazil', 'Vietnam']
+
+    for country in all_countries:
+        # Determine realistic starting points (base_le)
+        if country in high_increase:
+            base_le = 55  # Lower start for high increase
+        elif country in high_decrease:
+            base_le = 68  # Higher start for high decrease/shock
+        elif country in ['Japan', 'Germany', 'France', 'Canada', 'Australia', 'UK']:
+            base_le = 78  # High stable start
+        else:
+            base_le = np.random.uniform(60, 75)  # General moderate start
+
+        # Determine the trend magnitude
+        if country in high_increase:
+            # High increase: ~25-30 years gain (simulating rapid development/recovery)
+            trend = np.linspace(base_le, base_le + np.random.uniform(25, 30), len(years))
+        elif country in high_decrease:
+            # High decrease: ~10-15 years drop (simulating crisis like severe epidemic)
+            trend = np.linspace(base_le, base_le - np.random.uniform(10, 15), len(years))
+        elif country in moderate_increase:
+            # Moderate increase: ~8-12 years gain (simulating steady development)
+            trend = np.linspace(base_le, base_le + np.random.uniform(8, 12), len(years))
+        else:
+            # Stable/small change: ~2-5 years gain (typical for developed nations)
+            trend = np.linspace(base_le, base_le + np.random.uniform(2, 5), len(years))
+
+        # Add random noise
+        le_values = trend + np.random.normal(0, 1.0, len(years))
+
+        for year, le in zip(years, le_values):
+            data.append([country, year, le])
+
+    # Convert to DataFrame and standardize column names
+    mock_df = pd.DataFrame(data, columns=[COUNTRY_COL, YEAR_COL, LIFE_EXPECTANCY_COL])
+    return mock_df.round(2)
+
+
+def analyze_life_expectancy_trends(df):
+    """
+    Performs the trend analysis and plotting.
+
+    Args:
+        df (pd.DataFrame): The DataFrame containing country, year, and life expectancy data.
+    """
+
+    # --- 1. Data Preparation and Grouping ---
+    # Ensure numerical columns are correctly typed
+    df[YEAR_COL] = df[YEAR_COL].astype(int)
+    df[LIFE_EXPECTANCY_COL] = pd.to_numeric(df[LIFE_EXPECTANCY_COL], errors='coerce')
+
+    # Drop rows with missing data essential for this analysis
+    df_clean = df.dropna(subset=[COUNTRY_COL, YEAR_COL, LIFE_EXPECTANCY_COL])
+
+    # Group by country and sort by year to ensure correct min/max calculation
+    grouped = df_clean.sort_values(by=YEAR_COL).groupby(COUNTRY_COL)
+
+    # --- 2. Calculate Drastic Change ---
+
+    # Find the Life Expectancy in the earliest and latest recorded years for each country
+    first_le = grouped[LIFE_EXPECTANCY_COL].first()
+    last_le = grouped[LIFE_EXPECTANCY_COL].last()
+
+    # Calculate the total change (Last LE - First LE)
+    total_change = last_le - first_le
+
+    # Sort by the absolute value of the change to find the most 'drastic' movers
+    drastic_changes = total_change.abs().sort_values(ascending=False)
+
+    # Identify the top N countries based on the absolute change
+    top_drastic_countries = drastic_changes.head(TOP_N_COUNTRIES).index.tolist()
+
+    print(f"\nAnalysis Complete: Top {TOP_N_COUNTRIES} Countries with the Most Drastic Change (Absolute Value):")
+    for country, change in total_change.loc[top_drastic_countries].items():
+        print(f"- {country}: Total Change of {change:.2f} years")
+
+    # --- 3. Individual Visualization for Top Movers ---
+
+    # Calculate the overall average trend for contextual comparison
+    average_trend = df_clean.groupby(YEAR_COL)[LIFE_EXPECTANCY_COL].mean().reset_index()
+
+    # Color palette for highlighting the top countries
+    # FIX: Updated from deprecated plt.cm.get_cmap to plt.colormaps[name].resampled(N)
+    highlight_colors = plt.colormaps['Dark2'].resampled(TOP_N_COUNTRIES)
+
+    for i, country in enumerate(top_drastic_countries):
+        group = grouped.get_group(country)
+        change_value = total_change.loc[country]
+        color = highlight_colors(i)
+
+        fig, ax = plt.subplots(figsize=(10, 6))
+
+        # Plot the overall average trend for context
+        ax.plot(average_trend[YEAR_COL], average_trend[LIFE_EXPECTANCY_COL],
+                color='gray',
+                linestyle='--',
+                linewidth=2,
+                alpha=0.6,
+                label='Global Average Trend')
+
+        # Plot the specific country's trend
+        ax.plot(group[YEAR_COL], group[LIFE_EXPECTANCY_COL],
+                color=color,
+                linewidth=4,
+                label=f'{country} Trend')
+
+        # --- 4. Styling and Labels ---
+
+        title_tag = "Increase" if change_value >= 0 else "Decrease"
+        ax.set_title(
+            f'Life Expectancy in {country}: {title_tag} of {abs(change_value):.1f} Years',
+            fontsize=16,
+            fontweight='bold',
+            color=color
+        )
+        ax.set_xlabel('Year', fontsize=12)
+        ax.set_ylabel('Life Expectancy (Years)', fontsize=12)
+
+        # Add legend
+        ax.legend(loc='best', frameon=True, shadow=True)
+
+        # Add gridlines
+        ax.grid(True, linestyle=':', alpha=0.7)
+
+        plt.tight_layout()
+        plt.show()  # Display this individual plot
+
+    # --- 5. Final Summary of Selected Countries (NEW SECTION) ---
+    print("\n" + "=" * 70)
+    print(f"SUMMARY: Countries Selected for Individual Graphs (Top {TOP_N_COUNTRIES} Drastic Movers)")
+    print("=" * 70)
+
+    summary_data = []
+    for country in top_drastic_countries:
+        change = total_change.loc[country]
+        summary_data.append({
+            'Country': country,
+            'Total Change (Years)': f"{change:.2f}",
+            'Type': 'Increase' if change >= 0 else 'Decrease'
+        })
+
+    summary_df = pd.DataFrame(summary_data)
+    # Print the DataFrame as a clean string table in the console
+    print(summary_df.to_string(index=False))
+    print("=" * 70)
+
+
+# --- Main Execution ---
+
+if __name__ == "__main__":
+    # In a real notebook, you would use the 'df' loaded from Cell 3.
+    # For this runnable file, we create mock data:
+    df_data = create_mock_data()
+
+    # Proceed with the analysis
+    analyze_life_expectancy_trends(df_data)
