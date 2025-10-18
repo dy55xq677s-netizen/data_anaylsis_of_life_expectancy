@@ -175,7 +175,7 @@ def analyze_life_expectancy_trends(df):
         })
 
     summary_df = pd.DataFrame(summary_data)
-    # Print the DataFrame as a clean string table in the console
+    
     print(summary_df.to_string(index=False))
     print("=" * 70)
 
